@@ -228,13 +228,6 @@
     height:100%;
     display:block;
   }
-  #previewCanvas{
-    image-rendering:pixelated;
-    image-rendering:crisp-edges;
-  }
-  #gridCanvas{
-    pointer-events:none;
-  }
 
   .transport{
     display:flex;
@@ -398,6 +391,35 @@
         </div>
 
         <div class="field">
+          <label>Offset X <span class="val" id="offsetXVal">0px</span></label>
+          <input type="range" id="offsetX" min="-64" max="64" value="0">
+        </div>
+
+        <div class="field">
+          <label>Offset Y <span class="val" id="offsetYVal">0px</span></label>
+          <input type="range" id="offsetY" min="-32" max="32" value="0">
+        </div>
+
+        <div class="field">
+          <div class="toggle-row">
+            <span class="t-label">Mirror</span>
+            <label class="switch">
+              <input type="checkbox" id="mirror">
+              <div class="track"></div><div class="thumb"></div>
+            </label>
+          </div>
+          <div class="subfield" id="mirrorField" style="display:none;">
+            <label>Reflect</label>
+            <select id="mirrorMode">
+              <option value="x-left">Horizontal — left → right</option>
+              <option value="x-right">Horizontal — right → left</option>
+              <option value="y-top">Vertical — top → bottom</option>
+              <option value="y-bottom">Vertical — bottom → top</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
           <div class="toggle-row">
             <span class="t-label">Color quantization</span>
             <label class="switch">
@@ -466,8 +488,7 @@
         <div id="previewArea" style="display:none;">
           <div class="oled-stage">
             <div class="scope" id="scope">
-              <canvas id="previewCanvas" width="128" height="64"></canvas>
-              <canvas id="gridCanvas"></canvas>
+              <canvas id="previewCanvas"></canvas>
             </div>
           </div>
           <div class="transport">
@@ -771,7 +792,7 @@
     return {sx,sy,sw,sh,dx,dy,dw,dh};
   }
 
-  function fitToTarget(imageData, srcW, srcH, mode){
+  function fitToTarget(imageData, srcW, srcH, mode, offsetX, offsetY){
     const src = document.createElement('canvas');
     src.width = srcW; src.height = srcH;
     src.getContext('2d').putImageData(imageData, 0, 0);
@@ -783,8 +804,54 @@
     dctx.fillRect(0,0,OUT_W,OUT_H);
 
     const r = computeFitRect(srcW, srcH, OUT_W, OUT_H, mode);
-    dctx.drawImage(src, r.sx, r.sy, r.sw, r.sh, r.dx, r.dy, r.dw, r.dh);
+    dctx.drawImage(src, r.sx, r.sy, r.sw, r.sh, r.dx + (offsetX||0), r.dy + (offsetY||0), r.dw, r.dh);
     return dctx.getImageData(0,0,OUT_W,OUT_H);
+  }
+
+  // Reflects one half of a 128x64 ImageData onto the other half, discarding
+  // whatever was on the destination side. `axis` is 'x' (left/right split) or
+  // 'y' (top/bottom split); `side` picks which half is the source ('left',
+  // 'right', 'top', 'bottom').
+  function applyMirror(imageData, axis, side){
+    const w = imageData.width, h = imageData.height;
+    const src = imageData.data;
+    const out = new Uint8ClampedArray(src);
+    const copyPixel = (dstIdx, srcIdx) => {
+      out[dstIdx]=src[srcIdx]; out[dstIdx+1]=src[srcIdx+1];
+      out[dstIdx+2]=src[srcIdx+2]; out[dstIdx+3]=src[srcIdx+3];
+    };
+    if (axis === 'x'){
+      const half = Math.floor(w/2);
+      for (let y=0;y<h;y++){
+        for (let x=0;x<half;x++){
+          if (side === 'left'){
+            const srcIdx = (y*w+x)*4;
+            const dstIdx = (y*w+(w-1-x))*4;
+            copyPixel(dstIdx, srcIdx);
+          } else {
+            const srcIdx = (y*w+(w-1-x))*4;
+            const dstIdx = (y*w+x)*4;
+            copyPixel(dstIdx, srcIdx);
+          }
+        }
+      }
+    } else {
+      const half = Math.floor(h/2);
+      for (let y=0;y<half;y++){
+        for (let x=0;x<w;x++){
+          if (side === 'top'){
+            const srcIdx = (y*w+x)*4;
+            const dstIdx = ((h-1-y)*w+x)*4;
+            copyPixel(dstIdx, srcIdx);
+          } else {
+            const srcIdx = ((h-1-y)*w+x)*4;
+            const dstIdx = (y*w+x)*4;
+            copyPixel(dstIdx, srcIdx);
+          }
+        }
+      }
+    }
+    return new ImageData(out, w, h);
   }
 
   // Reduces each RGB channel to `levels` discrete steps before luminance/threshold.
@@ -863,12 +930,15 @@
   const metaDims = $('metaDims'), metaFrames = $('metaFrames');
   const adjustPanel = $('adjustPanel'), exportPanel = $('exportPanel');
   const emptyHint = $('emptyHint'), previewArea = $('previewArea');
-  const scope = $('scope'), previewCanvas = $('previewCanvas'), gridCanvas = $('gridCanvas');
+  const scope = $('scope'), previewCanvas = $('previewCanvas');
   const playBtn = $('playBtn'), playIcon = $('playIcon'), pauseIcon = $('pauseIcon');
   const frameCounter = $('frameCounter');
   const statFrames = $('statFrames'), statBytesFrame = $('statBytesFrame'), statTotal = $('statTotal');
   const statFps = $('statFps'), statDuration = $('statDuration');
   const fitMode = $('fitMode'), fitVal = $('fitVal');
+  const offsetX = $('offsetX'), offsetXVal = $('offsetXVal');
+  const offsetY = $('offsetY'), offsetYVal = $('offsetYVal');
+  const mirrorEl = $('mirror'), mirrorField = $('mirrorField'), mirrorMode = $('mirrorMode');
   const threshold = $('threshold'), thresholdVal = $('thresholdVal');
   const ditherEl = $('dither'), invertEl = $('invert');
   const quantizeEl = $('quantize'), quantLevelsField = $('quantLevelsField');
@@ -984,7 +1054,7 @@
       optimizeField.classList.toggle('disabled', !state.isAnimated);
       playBtn.disabled = !state.isAnimated;
 
-      resizeGridCanvas();
+      resizePreviewCanvas();
       reprocess();
     } catch(err){
       showError('The file could not be read: ' + err.message);
@@ -1030,6 +1100,10 @@
     const dither = ditherEl.checked;
     const invert = invertEl.checked;
     const levels = quantizeEl.checked ? parseInt(quantLevels.value, 10) : 256;
+    const offX = parseInt(offsetX.value, 10);
+    const offY = parseInt(offsetY.value, 10);
+    const doMirror = mirrorEl.checked;
+    const [mirrorAxis, mirrorSide] = mirrorMode.value.split('-');
 
     let sourceFrames = state.decodedFrames;
     if (state.isAnimated && optimizeEl.checked){
@@ -1037,7 +1111,8 @@
     }
 
     state.processedFrames = sourceFrames.map(f => {
-      const fitted = fitToTarget(f.imageData, state.gifSize.w, state.gifSize.h, mode);
+      let fitted = fitToTarget(f.imageData, state.gifSize.w, state.gifSize.h, mode, offX, offY);
+      if (doMirror) fitted = applyMirror(fitted, mirrorAxis, mirrorSide);
       const onoff = toMonochrome(fitted, th, dither, invert, levels);
       const bits = packBits(onoff);
       return { onoff, bits, delay: f.delay };
@@ -1065,17 +1140,67 @@
     updateSnippet();
   }
 
+  // The frame pixels and the grid overlay are drawn into ONE canvas, sized to
+  // its own actual display resolution (not the native 128x64), using the same
+  // cellW/cellH for both. Two independently-scaled layers (a tiny bitmap
+  // stretched via CSS + a separately-sized grid canvas) drift apart because
+  // each rounds its own 128 columns to physical pixels differently — drawing
+  // both from one set of rounded cell boundaries removes that mismatch.
+  function resizePreviewCanvas(){
+    const rect = previewCanvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.round(rect.width*dpr));
+    const h = Math.max(1, Math.round(rect.height*dpr));
+    if (previewCanvas.width !== w) previewCanvas.width = w;
+    if (previewCanvas.height !== h) previewCanvas.height = h;
+    if (state.processedFrames) drawFrame(state.playIndex);
+  }
+
   function drawFrame(i){
     const f = state.processedFrames[i];
     if (!f) return;
+    state.playIndex = i;
     const ctx = previewCanvas.getContext('2d');
-    const img = ctx.createImageData(OUT_W, OUT_H);
-    for (let p=0;p<f.onoff.length;p++){
-      const v = f.onoff[p] ? 255 : 0;
-      const o = p*4;
-      img.data[o]=v; img.data[o+1]=v; img.data[o+2]=v; img.data[o+3]=255;
+    const w = previewCanvas.width, h = previewCanvas.height;
+    if (!w || !h) return;
+    const cellW = w/OUT_W, cellH = h/OUT_H;
+
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,w,h);
+
+    ctx.fillStyle = '#fff';
+    for (let y=0;y<OUT_H;y++){
+      let runStart = -1;
+      for (let x=0;x<=OUT_W;x++){
+        const on = x<OUT_W && f.onoff[y*OUT_W+x];
+        if (on && runStart===-1) runStart = x;
+        if (!on && runStart!==-1){
+          const px0 = Math.round(runStart*cellW);
+          const px1 = Math.round(x*cellW);
+          const py0 = Math.round(y*cellH);
+          const py1 = Math.round((y+1)*cellH);
+          ctx.fillRect(px0, py0, px1-px0, py1-py0);
+          runStart = -1;
+        }
+      }
     }
-    ctx.putImageData(img, 0, 0);
+
+    if (pixelGridEl.checked){
+      ctx.strokeStyle = 'rgba(196,181,253,0.16)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x=0;x<=OUT_W;x++){
+        const px = Math.round(x*cellW)+0.5;
+        ctx.moveTo(px,0); ctx.lineTo(px,h);
+      }
+      for (let y=0;y<=OUT_H;y++){
+        const py = Math.round(y*cellH)+0.5;
+        ctx.moveTo(0,py); ctx.lineTo(w,py);
+      }
+      ctx.stroke();
+    }
+
     frameCounter.textContent = (i+1) + ' / ' + state.processedFrames.length;
   }
 
@@ -1104,40 +1229,20 @@
   });
 
   // --- Pixel grid overlay ---
-  function resizeGridCanvas(){
-    const rect = previewCanvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const dpr = window.devicePixelRatio || 1;
-    gridCanvas.width = Math.round(rect.width*dpr);
-    gridCanvas.height = Math.round(rect.height*dpr);
-    drawGridLines();
-  }
-  function drawGridLines(){
-    const ctx = gridCanvas.getContext('2d');
-    ctx.clearRect(0,0,gridCanvas.width,gridCanvas.height);
-    if (!pixelGridEl.checked) return;
-    const cellW = gridCanvas.width/OUT_W;
-    const cellH = gridCanvas.height/OUT_H;
-    ctx.strokeStyle = 'rgba(196,181,253,0.65)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let x=0;x<=OUT_W;x++){
-      const px = Math.round(x*cellW)+0.5;
-      ctx.moveTo(px,0); ctx.lineTo(px, gridCanvas.height);
-    }
-    for (let y=0;y<=OUT_H;y++){
-      const py = Math.round(y*cellH)+0.5;
-      ctx.moveTo(0,py); ctx.lineTo(gridCanvas.width, py);
-    }
-    ctx.stroke();
-  }
-  pixelGridEl.addEventListener('change', drawGridLines);
-  window.addEventListener('resize', resizeGridCanvas);
+  pixelGridEl.addEventListener('change', () => { if (state.processedFrames) drawFrame(state.playIndex); });
+  window.addEventListener('resize', resizePreviewCanvas);
   if (window.ResizeObserver){
-    new ResizeObserver(resizeGridCanvas).observe(scope);
+    new ResizeObserver(resizePreviewCanvas).observe(scope);
   }
 
   fitMode.addEventListener('change', () => { fitVal.textContent = fitMode.value; reprocess(); });
+  offsetX.addEventListener('input', () => { offsetXVal.textContent = offsetX.value + 'px'; reprocess(); });
+  offsetY.addEventListener('input', () => { offsetYVal.textContent = offsetY.value + 'px'; reprocess(); });
+  mirrorEl.addEventListener('change', () => {
+    mirrorField.style.display = mirrorEl.checked ? 'block' : 'none';
+    reprocess();
+  });
+  mirrorMode.addEventListener('change', reprocess);
   threshold.addEventListener('input', () => { thresholdVal.textContent = threshold.value; reprocess(); });
   ditherEl.addEventListener('change', reprocess);
   invertEl.addEventListener('change', reprocess);
