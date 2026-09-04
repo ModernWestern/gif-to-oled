@@ -1,5 +1,3 @@
-# README.md
-
 # GIF/PNG → OLED Bitmap Converter
 
 A browser‑based tool that converts animated GIFs or static PNGs into **1‑bit per pixel** bitmaps for **128×64** OLED displays (e.g., SSD1306 / SSD1309).
