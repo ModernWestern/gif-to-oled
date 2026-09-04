@@ -1,0 +1,1260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GIF/PNG → OLED Bitmap · 128×64</title>
+<style>
+  :root{
+    --bg:#0b0a10;
+    --panel:#141220;
+    --panel-2:#0f0d18;
+    --border:#2a2540;
+    --border-soft:#1f1b30;
+    --text:#ebe8f2;
+    --text-dim:#948da8;
+    --text-faint:#5f5876;
+    --accent:#c4b5fd;
+    --accent-dim:#3f3563;
+    --primary:#8b5cf6;
+    --primary-text:#f5f3ff;
+    --danger:#e0665a;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(180,140,255,0.07), transparent 60%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--font-sans);
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    padding:28px 20px 60px;
+  }
+  .wrap{max-width:980px;margin:0 auto;}
+
+  header{margin-bottom:28px;}
+  .eyebrow{
+    font-family:var(--font-mono);
+    font-size:12px;
+    color:var(--accent);
+    letter-spacing:0.02em;
+    margin-bottom:8px;
+  }
+  h1{
+    font-size:26px;
+    font-weight:650;
+    margin:0 0 6px;
+    letter-spacing:-0.01em;
+  }
+  .subtitle{color:var(--text-dim);font-size:14.5px;line-height:1.5;max-width:640px;}
+
+  .grid{
+    display:grid;
+    grid-template-columns: 320px 1fr;
+    gap:18px;
+    align-items:start;
+  }
+  @media (max-width: 860px){
+    .grid{grid-template-columns: 1fr;}
+  }
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:18px;
+  }
+  .panel + .panel{margin-top:18px;}
+  .panel-title{
+    font-size:11.5px;
+    color:var(--text-faint);
+    font-family:var(--font-mono);
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    margin:0 0 14px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .panel-title::after{
+    content:"";
+    flex:1;
+    height:1px;
+    background:var(--border-soft);
+  }
+
+  /* --- Dropzone --- */
+  .dropzone{
+    border:1.5px dashed var(--border);
+    border-radius:8px;
+    padding:22px 14px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .dropzone:hover, .dropzone.drag{
+    border-color:var(--accent);
+    background:rgba(196,181,253,0.05);
+  }
+  .dropzone svg{opacity:0.55;margin-bottom:8px;}
+  .dropzone .dz-title{font-size:14px;color:var(--text);margin-bottom:3px;}
+  .dropzone .dz-sub{font-size:12.5px;color:var(--text-faint);}
+  input[type=file]{display:none;}
+
+  .source-preview{
+    margin-top:14px;
+    display:none;
+  }
+  .source-preview.show{display:block;}
+  .meta-row{
+    display:flex;
+    justify-content:space-between;
+    font-size:12px;
+    font-family:var(--font-mono);
+    color:var(--text-dim);
+    margin-top:8px;
+  }
+  .meta-row b{color:var(--text);font-weight:500;}
+
+  .error-box{
+    display:none;
+    margin-top:12px;
+    padding:10px 12px;
+    border-radius:6px;
+    background:rgba(224,102,90,0.08);
+    border:1px solid rgba(224,102,90,0.3);
+    color:var(--danger);
+    font-size:12.5px;
+    line-height:1.4;
+  }
+  .error-box.show{display:block;}
+
+  /* --- Controls --- */
+  .field{margin-bottom:16px;}
+  .field:last-child{margin-bottom:0;}
+  .field label{
+    display:flex;
+    justify-content:space-between;
+    font-size:13px;
+    color:var(--text-dim);
+    margin-bottom:7px;
+  }
+  .field label span.val{
+    font-family:var(--font-mono);
+    color:var(--accent);
+    font-size:12px;
+  }
+  select, input[type=text]{
+    width:100%;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:8px 10px;
+    border-radius:6px;
+    font-size:13.5px;
+    font-family:var(--font-sans);
+  }
+  select:focus, input[type=text]:focus{outline:1.5px solid var(--accent);border-color:var(--accent);}
+  input[type=range]{
+    width:100%;
+    accent-color:var(--accent);
+    height:4px;
+  }
+  .toggle-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:2px 0;
+  }
+  .toggle-row .t-label{font-size:13px;color:var(--text-dim);}
+  .switch{
+    position:relative;
+    width:38px;height:22px;
+    flex-shrink:0;
+  }
+  .switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;}
+  .switch .track{
+    position:absolute;inset:0;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    border-radius:999px;
+    transition:background .15s, border-color .15s;
+  }
+  .switch .thumb{
+    position:absolute;top:2px;left:2px;
+    width:16px;height:16px;
+    border-radius:50%;
+    background:var(--text-faint);
+    transition:transform .15s, background .15s;
+  }
+  .switch input:checked + .track{background:var(--accent-dim);border-color:var(--accent);}
+  .switch input:checked + .track + .thumb{transform:translateX(16px);background:var(--accent);}
+
+  .subfield{
+    margin-top:10px;
+    padding-top:10px;
+    border-top:1px solid var(--border-soft);
+  }
+  .hint-note{
+    margin-top:8px;
+    font-size:11.5px;
+    line-height:1.4;
+    color:var(--text-faint);
+  }
+  .field.disabled{opacity:0.4;pointer-events:none;}
+
+  /* --- Preview (flat, no 3D chrome — plain B/W screen) --- */
+  .oled-stage{
+    display:flex;
+    justify-content:center;
+    padding:18px 10px 10px;
+  }
+  .scope{
+    position:relative;
+    width:min(85vw, 576px);
+    max-width:576px;
+    aspect-ratio: 128 / 64;
+    background:#000;
+    border:1px solid var(--border);
+  }
+  .scope canvas{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    display:block;
+  }
+  #previewCanvas{
+    image-rendering:pixelated;
+    image-rendering:crisp-edges;
+  }
+  #gridCanvas{
+    pointer-events:none;
+  }
+
+  .transport{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:14px;
+    margin-top:14px;
+  }
+  .play-btn{
+    width:34px;height:34px;
+    border-radius:50%;
+    border:1px solid var(--border);
+    background:var(--panel-2);
+    color:var(--text);
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    transition:border-color .15s;
+  }
+  .play-btn:hover{border-color:var(--accent);}
+  .play-btn:disabled{opacity:0.35;cursor:not-allowed;}
+  .frame-counter{
+    font-family:var(--font-mono);
+    font-size:12.5px;
+    color:var(--text-dim);
+    min-width:64px;
+    text-align:center;
+  }
+
+  .grid-toggle-row{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    margin-top:14px;
+    padding-top:14px;
+    border-top:1px solid var(--border-soft);
+  }
+  .grid-toggle-row .t-label{font-size:12.5px;color:var(--text-dim);}
+
+  .stats{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(110px,1fr));
+    gap:10px;
+    margin-top:18px;
+  }
+  .stat{
+    background:var(--panel-2);
+    border:1px solid var(--border-soft);
+    border-radius:8px;
+    padding:10px 12px;
+  }
+  .stat .k{font-size:10.5px;color:var(--text-faint);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;}
+  .stat .v{font-size:16px;font-family:var(--font-mono);color:var(--text);}
+  .stat .v small{font-size:11px;color:var(--text-dim);}
+
+  /* --- Export --- */
+  .export-row{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-top:16px;
+  }
+  .btn{
+    flex:1;
+    min-width:160px;
+    padding:11px 16px;
+    border-radius:7px;
+    border:1px solid transparent;
+    font-size:13.5px;
+    font-weight:600;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    transition:filter .15s, opacity .15s;
+  }
+  .btn:disabled{opacity:0.4;cursor:not-allowed;}
+  .btn-primary{background:var(--primary);color:var(--primary-text);}
+  .btn-primary:hover:not(:disabled){filter:brightness(1.1);}
+  .btn-ghost{background:var(--panel-2);border-color:var(--border);color:var(--text);}
+  .btn-ghost:hover:not(:disabled){border-color:var(--accent);}
+
+  .name-field{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-top:14px;
+  }
+  .name-field label{font-size:12.5px;color:var(--text-dim);white-space:nowrap;}
+
+  details{margin-top:16px;}
+  summary{
+    cursor:pointer;
+    font-size:12.5px;
+    color:var(--text-dim);
+    font-family:var(--font-mono);
+    padding:4px 0;
+  }
+  summary:hover{color:var(--accent);}
+  pre{
+    margin-top:10px;
+    background:var(--panel-2);
+    border:1px solid var(--border-soft);
+    border-radius:8px;
+    padding:14px;
+    overflow-x:auto;
+    font-family:var(--font-mono);
+    font-size:12px;
+    line-height:1.6;
+    color:var(--text-dim);
+  }
+  pre .cm{color:var(--text-faint);}
+  pre .kw{color:var(--accent);}
+
+  .empty-hint{
+    color:var(--text-faint);
+    font-size:13px;
+    text-align:center;
+    padding:40px 10px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">AI DESKTOP ASSISTANT · SSD1309 128×64</div>
+    <h1>GIF/PNG → OLED Bitmap</h1>
+    <p class="subtitle">Convert a GIF or PNG into a monochrome 128×64 bitmap and export it as a self-describing binary file (for LittleFS) or as a .h header with C arrays to compile directly into your firmware.</p>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT COLUMN -->
+    <div>
+      <div class="panel">
+        <p class="panel-title">Source</p>
+        <div class="dropzone" id="dropzone">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+          <div class="dz-title">Drag a GIF or PNG here</div>
+          <div class="dz-sub">or click to choose a file</div>
+        </div>
+        <input type="file" id="fileInput" accept="image/gif,image/png">
+        <div class="error-box" id="errorBox"></div>
+        <div class="source-preview" id="sourcePreview">
+          <div class="meta-row"><span>Dimensions</span><b id="metaDims">—</b></div>
+          <div class="meta-row"><span>Frames</span><b id="metaFrames">—</b></div>
+        </div>
+      </div>
+
+      <div class="panel" id="adjustPanel" style="opacity:0.4;pointer-events:none;">
+        <p class="panel-title">Adjustments</p>
+
+        <div class="field">
+          <label>Fit <span class="val" id="fitVal">contain</span></label>
+          <select id="fitMode">
+            <option value="contain">Contain (with borders)</option>
+            <option value="cover">Cover (crop)</option>
+            <option value="stretch">Stretch</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <div class="toggle-row">
+            <span class="t-label">Color quantization</span>
+            <label class="switch">
+              <input type="checkbox" id="quantize">
+              <div class="track"></div><div class="thumb"></div>
+            </label>
+          </div>
+          <div class="subfield" id="quantLevelsField" style="display:none;">
+            <label>Levels per channel <span class="val" id="quantLevelsVal">4</span></label>
+            <input type="range" id="quantLevels" min="2" max="32" value="4">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Threshold <span class="val" id="thresholdVal">128</span></label>
+          <input type="range" id="threshold" min="1" max="254" value="128">
+        </div>
+
+        <div class="field">
+          <div class="toggle-row">
+            <span class="t-label">Dithering (Floyd–Steinberg)</span>
+            <label class="switch">
+              <input type="checkbox" id="dither" checked>
+              <div class="track"></div><div class="thumb"></div>
+            </label>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="toggle-row">
+            <span class="t-label">Invert (white background)</span>
+            <label class="switch">
+              <input type="checkbox" id="invert">
+              <div class="track"></div><div class="thumb"></div>
+            </label>
+          </div>
+        </div>
+
+        <div class="field" id="optimizeField">
+          <div class="toggle-row">
+            <span class="t-label">Optimize frame rate</span>
+            <label class="switch">
+              <input type="checkbox" id="optimize">
+              <div class="track"></div><div class="thumb"></div>
+            </label>
+          </div>
+          <div class="subfield" id="optimizeFpsField" style="display:none;">
+            <label>Export at <span class="val" id="optimizeFpsVal">15</span> FPS</label>
+            <select id="optimizeFps">
+              <option value="15">15 FPS</option>
+              <option value="20">20 FPS</option>
+            </select>
+            <div class="hint-note">Reduces the total frame count only — the original animation duration is kept unchanged.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div>
+      <div class="panel">
+        <p class="panel-title">Preview · 128×64</p>
+
+        <div id="emptyHint" class="empty-hint">Upload a GIF or PNG to see the monochrome conversion here.</div>
+
+        <div id="previewArea" style="display:none;">
+          <div class="oled-stage">
+            <div class="scope" id="scope">
+              <canvas id="previewCanvas" width="128" height="64"></canvas>
+              <canvas id="gridCanvas"></canvas>
+            </div>
+          </div>
+          <div class="transport">
+            <button class="play-btn" id="playBtn" title="Play / pause">
+              <svg id="playIcon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              <svg id="pauseIcon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:none;"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+            </button>
+            <div class="frame-counter" id="frameCounter">1 / 1</div>
+          </div>
+
+          <div class="grid-toggle-row">
+            <span class="t-label">Pixel grid</span>
+            <label class="switch">
+              <input type="checkbox" id="pixelGrid">
+              <div class="track"></div><div class="thumb"></div>
+            </label>
+          </div>
+
+          <div class="stats">
+            <div class="stat"><div class="k">Frames</div><div class="v" id="statFrames">—</div></div>
+            <div class="stat"><div class="k">Bytes / frame</div><div class="v" id="statBytesFrame">—</div></div>
+            <div class="stat"><div class="k">Total size</div><div class="v" id="statTotal">—</div></div>
+            <div class="stat"><div class="k">Preview FPS</div><div class="v" id="statFps">—</div></div>
+            <div class="stat"><div class="k">Duration (s:frames)</div><div class="v" id="statDuration">—</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="exportPanel" style="opacity:0.4;pointer-events:none;">
+        <p class="panel-title">Export</p>
+
+        <div class="name-field">
+          <label for="varName">Name</label>
+          <input type="text" id="varName" value="myAnimation">
+        </div>
+
+        <div class="export-row">
+          <button class="btn btn-primary" id="btnBin">↓ Download .bin</button>
+          <button class="btn btn-ghost" id="btnHeader">↓ Download .h (C array)</button>
+        </div>
+
+        <details>
+          <summary>View binary format and Arduino read snippet</summary>
+          <pre id="snippet"></pre>
+        </details>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const OUT_W = 128, OUT_H = 64;
+  const BYTES_PER_ROW = OUT_W / 8; // 16
+  const BYTES_PER_FRAME = BYTES_PER_ROW * OUT_H; // 1024
+
+  // ---------------------------------------------------------------------
+  // GIF decoder (GIF87a / GIF89a) — vanilla JS, no dependencies
+  // ---------------------------------------------------------------------
+  function parseGIF(buffer){
+    const data = new Uint8Array(buffer);
+    let pos = 0;
+    function readByte(){ return data[pos++]; }
+    function readBytes(n){ const b = data.slice(pos,pos+n); pos+=n; return b; }
+    function readUint16(){ const v = data[pos] | (data[pos+1]<<8); pos+=2; return v; }
+    function readColorTable(size){
+      const table = [];
+      for (let i=0;i<size;i++){
+        const r=readByte(), g=readByte(), b=readByte();
+        table.push([r,g,b]);
+      }
+      return table;
+    }
+    function skipSubBlocks(){
+      let size;
+      while ((size = readByte()) !== 0 && pos < data.length){ pos += size; }
+    }
+    function readSubBlocks(){
+      const chunks = [];
+      let size, total = 0;
+      while ((size = readByte()) !== 0){
+        chunks.push(data.subarray(pos, pos+size));
+        pos += size;
+        total += size;
+      }
+      const out = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks){ out.set(c, off); off += c.length; }
+      return out;
+    }
+
+    const sigBytes = readBytes(6);
+    const sig = String.fromCharCode.apply(null, sigBytes);
+    if (sig.slice(0,3) !== "GIF") throw new Error("The file does not have a valid GIF header.");
+
+    const width = readUint16();
+    const height = readUint16();
+    const packed = readByte();
+    const gctFlag = (packed & 0x80) !== 0;
+    const gctSize = 2 << (packed & 0x07);
+    readByte(); // bg color index
+    readByte(); // pixel aspect ratio
+
+    let gct = null;
+    if (gctFlag) gct = readColorTable(gctSize);
+
+    const frames = [];
+    let gce = null;
+    let safety = 0;
+
+    while (pos < data.length && safety < 100000){
+      safety++;
+      const blockType = readByte();
+      if (blockType === 0x21){
+        const label = readByte();
+        if (label === 0xF9){
+          readByte(); // block size (4)
+          const packedGCE = readByte();
+          const delayTime = readUint16();
+          const transparentIndex = readByte();
+          readByte(); // terminator
+          gce = {
+            disposal: (packedGCE >> 2) & 0x07,
+            transparentFlag: (packedGCE & 0x01) !== 0,
+            delayTime, transparentIndex
+          };
+        } else {
+          skipSubBlocks();
+        }
+      } else if (blockType === 0x2C){
+        const left = readUint16();
+        const top = readUint16();
+        const w = readUint16();
+        const h = readUint16();
+        const packedID = readByte();
+        const lctFlag = (packedID & 0x80) !== 0;
+        const interlaceFlag = (packedID & 0x40) !== 0;
+        const lctSize = 2 << (packedID & 0x07);
+        let lct = null;
+        if (lctFlag) lct = readColorTable(lctSize);
+        const minCodeSize = readByte();
+        const imageBytes = readSubBlocks();
+        let indices = lzwDecode(minCodeSize, imageBytes, w*h);
+        if (interlaceFlag) indices = deinterlace(indices, w, h);
+        frames.push({ left, top, w, h, colorTable: lct || gct, indices, gce });
+        gce = null;
+      } else if (blockType === 0x3B){
+        break;
+      } else {
+        break;
+      }
+    }
+
+    if (!frames.length) throw new Error("No image frames were found in the GIF.");
+    return { width, height, gct, frames };
+  }
+
+  function lzwDecode(minCodeSize, data, pixelCount){
+    const clearCode = 1 << minCodeSize;
+    const endCode = clearCode + 1;
+    let codeSize, dict, dictLen;
+
+    function resetDict(){
+      dict = new Array(4096);
+      for (let i=0;i<clearCode;i++) dict[i] = [i];
+      dictLen = clearCode + 2;
+      codeSize = minCodeSize + 1;
+    }
+    resetDict();
+
+    const output = new Uint8Array(pixelCount);
+    let outPos = 0;
+    let bitBuffer = 0, bitsInBuffer = 0, bytePos = 0;
+
+    function readCode(){
+      while (bitsInBuffer < codeSize){
+        if (bytePos >= data.length) return endCode;
+        bitBuffer |= data[bytePos++] << bitsInBuffer;
+        bitsInBuffer += 8;
+      }
+      const code = bitBuffer & ((1<<codeSize)-1);
+      bitBuffer >>= codeSize;
+      bitsInBuffer -= codeSize;
+      return code;
+    }
+
+    let prevCode = null;
+    while (outPos < pixelCount){
+      const code = readCode();
+      if (code === clearCode){ resetDict(); prevCode = null; continue; }
+      if (code === endCode) break;
+
+      let entry;
+      if (code < dictLen && dict[code]){
+        entry = dict[code];
+      } else if (code === dictLen && prevCode !== null){
+        entry = dict[prevCode].concat([dict[prevCode][0]]);
+      } else {
+        break;
+      }
+
+      for (let i=0;i<entry.length && outPos<pixelCount;i++) output[outPos++] = entry[i];
+
+      if (prevCode !== null && dictLen < 4096){
+        dict[dictLen] = dict[prevCode].concat([entry[0]]);
+        dictLen++;
+        if (dictLen === (1<<codeSize) && codeSize < 12) codeSize++;
+      }
+      prevCode = code;
+    }
+    return output;
+  }
+
+  function deinterlace(indices, w, h){
+    const output = new Uint8Array(w*h);
+    const passes = [[0,8],[4,8],[2,4],[1,2]];
+    let srcRow = 0;
+    for (const [start, step] of passes){
+      for (let row = start; row < h; row += step){
+        output.set(indices.subarray(srcRow*w, srcRow*w+w), row*w);
+        srcRow++;
+      }
+    }
+    return output;
+  }
+
+  function decodeFramesToImageData(gif){
+    const canvas = document.createElement('canvas');
+    canvas.width = gif.width; canvas.height = gif.height;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.clearRect(0,0,gif.width,gif.height);
+
+    const out = [];
+    let savedForRestore = null;
+
+    for (const frame of gif.frames){
+      const disposal = frame.gce ? frame.gce.disposal : 0;
+      if (disposal === 3){
+        savedForRestore = ctx.getImageData(0,0,gif.width,gif.height);
+      }
+
+      const table = frame.colorTable || gif.gct || [[0,0,0]];
+      const transparentIndex = (frame.gce && frame.gce.transparentFlag) ? frame.gce.transparentIndex : -1;
+
+      const imgData = ctx.createImageData(frame.w, frame.h);
+      for (let i=0;i<frame.indices.length;i++){
+        const idx = frame.indices[i];
+        const o = i*4;
+        if (idx === transparentIndex){
+          imgData.data[o+3] = 0;
+        } else {
+          const c = table[idx] || [0,0,0];
+          imgData.data[o] = c[0]; imgData.data[o+1] = c[1]; imgData.data[o+2] = c[2]; imgData.data[o+3] = 255;
+        }
+      }
+
+      const tmp = document.createElement('canvas');
+      tmp.width = frame.w; tmp.height = frame.h;
+      tmp.getContext('2d').putImageData(imgData, 0, 0);
+      ctx.drawImage(tmp, frame.left, frame.top);
+
+      const fullSnapshot = ctx.getImageData(0,0,gif.width,gif.height);
+      let delay = frame.gce ? frame.gce.delayTime * 10 : 100;
+      if (!delay || delay < 20) delay = 100;
+      out.push({ imageData: fullSnapshot, delay });
+
+      if (disposal === 2){
+        ctx.clearRect(frame.left, frame.top, frame.w, frame.h);
+      } else if (disposal === 3 && savedForRestore){
+        ctx.putImageData(savedForRestore, 0, 0);
+      }
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------
+  // Fit + color quantization + monochrome conversion
+  // ---------------------------------------------------------------------
+  function computeFitRect(srcW, srcH, dstW, dstH, mode){
+    const srcAspect = srcW/srcH, dstAspect = dstW/dstH;
+    let sx=0, sy=0, sw=srcW, sh=srcH, dx=0, dy=0, dw=dstW, dh=dstH;
+    if (mode === 'contain'){
+      if (srcAspect > dstAspect){
+        dw = dstW; dh = Math.round(dstW/srcAspect);
+        dx = 0; dy = Math.round((dstH-dh)/2);
+      } else {
+        dh = dstH; dw = Math.round(dstH*srcAspect);
+        dy = 0; dx = Math.round((dstW-dw)/2);
+      }
+    } else if (mode === 'cover'){
+      if (srcAspect > dstAspect){
+        sh = srcH; sw = Math.round(srcH*dstAspect);
+        sy = 0; sx = Math.round((srcW-sw)/2);
+      } else {
+        sw = srcW; sh = Math.round(srcW/dstAspect);
+        sx = 0; sy = Math.round((srcH-sh)/2);
+      }
+    }
+    return {sx,sy,sw,sh,dx,dy,dw,dh};
+  }
+
+  function fitToTarget(imageData, srcW, srcH, mode){
+    const src = document.createElement('canvas');
+    src.width = srcW; src.height = srcH;
+    src.getContext('2d').putImageData(imageData, 0, 0);
+
+    const dst = document.createElement('canvas');
+    dst.width = OUT_W; dst.height = OUT_H;
+    const dctx = dst.getContext('2d');
+    dctx.fillStyle = '#000';
+    dctx.fillRect(0,0,OUT_W,OUT_H);
+
+    const r = computeFitRect(srcW, srcH, OUT_W, OUT_H, mode);
+    dctx.drawImage(src, r.sx, r.sy, r.sw, r.sh, r.dx, r.dy, r.dw, r.dh);
+    return dctx.getImageData(0,0,OUT_W,OUT_H);
+  }
+
+  // Reduces each RGB channel to `levels` discrete steps before luminance/threshold.
+  // This is independent from the black/white threshold: it controls how many
+  // gradations exist in the source before that threshold (or dithering) is applied,
+  // which changes banding/detail without touching the on/off cutoff itself.
+  function quantizeChannel(v, levels){
+    if (!levels || levels >= 256) return v;
+    const step = 255/(levels-1);
+    return Math.round(Math.round(v/step)*step);
+  }
+
+  function toMonochrome(imgData, threshold, dither, invert, quantLevels){
+    const w = OUT_W, h = OUT_H, data = imgData.data;
+    const gray = new Float32Array(w*h);
+    for (let i=0;i<w*h;i++){
+      const o = i*4;
+      const r = quantizeChannel(data[o], quantLevels);
+      const g = quantizeChannel(data[o+1], quantLevels);
+      const b = quantizeChannel(data[o+2], quantLevels);
+      gray[i] = 0.299*r + 0.587*g + 0.114*b;
+    }
+    const onoff = new Uint8Array(w*h);
+    if (dither){
+      for (let y=0;y<h;y++){
+        for (let x=0;x<w;x++){
+          const i = y*w+x;
+          const old = gray[i];
+          const on = old >= threshold ? 1 : 0;
+          onoff[i] = on;
+          const err = old - (on ? 255 : 0);
+          if (x+1<w) gray[i+1] += err*7/16;
+          if (y+1<h){
+            if (x>0) gray[i+w-1] += err*3/16;
+            gray[i+w] += err*5/16;
+            if (x+1<w) gray[i+w+1] += err*1/16;
+          }
+        }
+      }
+    } else {
+      for (let i=0;i<w*h;i++) onoff[i] = gray[i] >= threshold ? 1 : 0;
+    }
+    if (invert) for (let i=0;i<onoff.length;i++) onoff[i] = onoff[i] ? 0 : 1;
+    return onoff;
+  }
+
+  function packBits(onoff){
+    const out = new Uint8Array(BYTES_PER_FRAME);
+    for (let y=0;y<OUT_H;y++){
+      for (let x=0;x<OUT_W;x++){
+        if (onoff[y*OUT_W+x]){
+          const byteIndex = y*BYTES_PER_ROW + (x >> 3);
+          const bitIndex = x & 7; // LSB-first, bit0 = leftmost pixel (XBM order)
+          out[byteIndex] |= (1 << bitIndex);
+        }
+      }
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------------
+  // App state & UI wiring
+  // ---------------------------------------------------------------------
+  const state = {
+    decodedFrames: null,
+    gifSize: null,
+    processedFrames: null,
+    playIndex: 0,
+    playTimer: null,
+    playing: false
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const dropzone = $('dropzone'), fileInput = $('fileInput'), errorBox = $('errorBox');
+  const sourcePreview = $('sourcePreview');
+  const metaDims = $('metaDims'), metaFrames = $('metaFrames');
+  const adjustPanel = $('adjustPanel'), exportPanel = $('exportPanel');
+  const emptyHint = $('emptyHint'), previewArea = $('previewArea');
+  const scope = $('scope'), previewCanvas = $('previewCanvas'), gridCanvas = $('gridCanvas');
+  const playBtn = $('playBtn'), playIcon = $('playIcon'), pauseIcon = $('pauseIcon');
+  const frameCounter = $('frameCounter');
+  const statFrames = $('statFrames'), statBytesFrame = $('statBytesFrame'), statTotal = $('statTotal');
+  const statFps = $('statFps'), statDuration = $('statDuration');
+  const fitMode = $('fitMode'), fitVal = $('fitVal');
+  const threshold = $('threshold'), thresholdVal = $('thresholdVal');
+  const ditherEl = $('dither'), invertEl = $('invert');
+  const quantizeEl = $('quantize'), quantLevelsField = $('quantLevelsField');
+  const quantLevels = $('quantLevels'), quantLevelsVal = $('quantLevelsVal');
+  const pixelGridEl = $('pixelGrid');
+  const optimizeField = $('optimizeField'), optimizeEl = $('optimize');
+  const optimizeFpsField = $('optimizeFpsField'), optimizeFps = $('optimizeFps'), optimizeFpsVal = $('optimizeFpsVal');
+  const varNameInput = $('varName');
+  const btnBin = $('btnBin'), btnHeader = $('btnHeader');
+  const snippetEl = $('snippet');
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  ['dragenter','dragover'].forEach(ev => dropzone.addEventListener(ev, (e) => {
+    e.preventDefault(); dropzone.classList.add('drag');
+  }));
+  ['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, (e) => {
+    e.preventDefault(); dropzone.classList.remove('drag');
+  }));
+  dropzone.addEventListener('drop', (e) => {
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+  fileInput.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) handleFile(f);
+  });
+
+  function showError(msg){
+    errorBox.textContent = msg;
+    errorBox.classList.add('show');
+  }
+  function clearError(){
+    errorBox.classList.remove('show');
+    errorBox.textContent = '';
+  }
+
+  function decodePNGFile(file){
+    return new Promise((resolve, reject) => {
+      // Primary path: createImageBitmap decodes straight from the Blob in memory.
+      // It doesn't go through an <img src="blob:..."> load, so it isn't affected by
+      // a page's img-src Content-Security-Policy (which some sandboxed previews
+      // restrict, blocking blob: URLs and making <img>-based decoding fail even for
+      // perfectly valid PNGs).
+      const finish = (bitmapOrImg, w, h) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmapOrImg, 0, 0);
+        const imageData = ctx.getImageData(0, 0, w, h);
+        resolve({ width: w, height: h, frames: [{ imageData, delay: 100 }] });
+      };
+
+      const fallbackViaImg = (primaryErr) => {
+        const img = new Image();
+        img.onload = () => finish(img, img.naturalWidth, img.naturalHeight);
+        img.onerror = () => {
+          const reason = primaryErr ? (primaryErr.message || String(primaryErr)) : 'the image element could not load it';
+          reject(new Error('The PNG file could not be decoded (' + reason + ').'));
+        };
+        img.src = URL.createObjectURL(file);
+      };
+
+      if (typeof createImageBitmap === 'function'){
+        createImageBitmap(file).then(bitmap => {
+          finish(bitmap, bitmap.width, bitmap.height);
+        }).catch(err => fallbackViaImg(err));
+      } else {
+        fallbackViaImg(null);
+      }
+    });
+  }
+
+  async function handleFile(file){
+    clearError();
+    const isGif = /image\/gif/i.test(file.type) || /\.gif$/i.test(file.name);
+    const isPng = /image\/png/i.test(file.type) || /\.png$/i.test(file.name);
+    if (!isGif && !isPng){
+      showError('The file must be a .gif or .png. Please choose a valid file.');
+      return;
+    }
+    try{
+      let decodedFrames, width, height;
+      if (isGif){
+        const buffer = await file.arrayBuffer();
+        const gif = parseGIF(buffer);
+        decodedFrames = decodeFramesToImageData(gif);
+        width = gif.width; height = gif.height;
+      } else {
+        const png = await decodePNGFile(file);
+        decodedFrames = png.frames;
+        width = png.width; height = png.height;
+      }
+
+      state.decodedFrames = decodedFrames;
+      state.gifSize = { w: width, h: height };
+      state.isAnimated = decodedFrames.length > 1;
+
+      sourcePreview.classList.add('show');
+      metaDims.textContent = width + ' × ' + height;
+      metaFrames.textContent = decodedFrames.length + (state.isAnimated ? '' : ' (static)');
+
+      adjustPanel.style.opacity = '1';
+      adjustPanel.style.pointerEvents = 'auto';
+      exportPanel.style.opacity = '1';
+      exportPanel.style.pointerEvents = 'auto';
+      emptyHint.style.display = 'none';
+      previewArea.style.display = 'block';
+
+      if (!state.isAnimated){
+        optimizeEl.checked = false;
+        optimizeFpsField.style.display = 'none';
+      }
+      optimizeField.classList.toggle('disabled', !state.isAnimated);
+      playBtn.disabled = !state.isAnimated;
+
+      resizeGridCanvas();
+      reprocess();
+    } catch(err){
+      showError('The file could not be read: ' + err.message);
+    }
+  }
+
+  // Resamples a frame list onto a fixed frame interval (1000/targetFps ms) without
+  // changing the total playback duration — it only changes how many frames are used
+  // to cover that same duration.
+  function resampleFrames(frames, targetFps){
+    if (!frames || frames.length <= 1) return frames;
+    const totalMs = frames.reduce((s, f) => s + f.delay, 0);
+    if (!totalMs) return frames;
+
+    const boundaries = [];
+    let acc = 0;
+    for (const f of frames){ boundaries.push(acc); acc += f.delay; }
+
+    const frameDur = 1000 / targetFps;
+    const numOut = Math.max(1, Math.round(totalMs / frameDur));
+    const out = [];
+    for (let i = 0; i < numOut; i++){
+      const t = Math.min(i * frameDur, totalMs - 0.001);
+      let idx = frames.length - 1;
+      for (let k = 0; k < frames.length; k++){
+        const start = boundaries[k];
+        const end = (k === frames.length - 1) ? totalMs : boundaries[k + 1];
+        if (t >= start && t < end){ idx = k; break; }
+      }
+      out.push({ imageData: frames[idx].imageData, delay: Math.round(frameDur) });
+    }
+    // Preserve the exact original total duration by absorbing rounding error
+    // into the last frame's delay.
+    const producedMs = out.reduce((s, f) => s + f.delay, 0);
+    out[out.length - 1].delay += Math.round(totalMs - producedMs);
+    return out;
+  }
+
+  function reprocess(){
+    if (!state.decodedFrames) return;
+    const mode = fitMode.value;
+    const th = parseInt(threshold.value, 10);
+    const dither = ditherEl.checked;
+    const invert = invertEl.checked;
+    const levels = quantizeEl.checked ? parseInt(quantLevels.value, 10) : 256;
+
+    let sourceFrames = state.decodedFrames;
+    if (state.isAnimated && optimizeEl.checked){
+      sourceFrames = resampleFrames(sourceFrames, parseInt(optimizeFps.value, 10));
+    }
+
+    state.processedFrames = sourceFrames.map(f => {
+      const fitted = fitToTarget(f.imageData, state.gifSize.w, state.gifSize.h, mode);
+      const onoff = toMonochrome(fitted, th, dither, invert, levels);
+      const bits = packBits(onoff);
+      return { onoff, bits, delay: f.delay };
+    });
+
+    state.playIndex = 0;
+    updateStats();
+    drawFrame(0);
+    if (state.playing) startPlayback();
+  }
+
+  function updateStats(){
+    const frames = state.processedFrames;
+    const n = frames.length;
+    const total = n * BYTES_PER_FRAME;
+    const totalMs = frames.reduce((s, f) => s + f.delay, 0);
+    const avgFps = totalMs > 0 ? (n / (totalMs / 1000)) : 0;
+
+    statFrames.textContent = n;
+    statBytesFrame.textContent = BYTES_PER_FRAME;
+    statTotal.textContent = (total/1024).toFixed(1) + ' KB';
+    statFps.textContent = n > 1 ? (avgFps.toFixed(1) + ' fps') : '—';
+    statDuration.textContent = (totalMs/1000).toFixed(2) + 's : ' + n + 'f';
+    frameCounter.textContent = '1 / ' + n;
+    updateSnippet();
+  }
+
+  function drawFrame(i){
+    const f = state.processedFrames[i];
+    if (!f) return;
+    const ctx = previewCanvas.getContext('2d');
+    const img = ctx.createImageData(OUT_W, OUT_H);
+    for (let p=0;p<f.onoff.length;p++){
+      const v = f.onoff[p] ? 255 : 0;
+      const o = p*4;
+      img.data[o]=v; img.data[o+1]=v; img.data[o+2]=v; img.data[o+3]=255;
+    }
+    ctx.putImageData(img, 0, 0);
+    frameCounter.textContent = (i+1) + ' / ' + state.processedFrames.length;
+  }
+
+  function startPlayback(){
+    stopPlayback();
+    state.playing = true;
+    playIcon.style.display = 'none';
+    pauseIcon.style.display = '';
+    const step = () => {
+      drawFrame(state.playIndex);
+      const delay = state.processedFrames[state.playIndex].delay;
+      state.playIndex = (state.playIndex + 1) % state.processedFrames.length;
+      state.playTimer = setTimeout(step, delay);
+    };
+    step();
+  }
+  function stopPlayback(){
+    state.playing = false;
+    playIcon.style.display = '';
+    pauseIcon.style.display = 'none';
+    if (state.playTimer){ clearTimeout(state.playTimer); state.playTimer = null; }
+  }
+  playBtn.addEventListener('click', () => {
+    if (!state.processedFrames) return;
+    if (state.playing) stopPlayback(); else startPlayback();
+  });
+
+  // --- Pixel grid overlay ---
+  function resizeGridCanvas(){
+    const rect = previewCanvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const dpr = window.devicePixelRatio || 1;
+    gridCanvas.width = Math.round(rect.width*dpr);
+    gridCanvas.height = Math.round(rect.height*dpr);
+    drawGridLines();
+  }
+  function drawGridLines(){
+    const ctx = gridCanvas.getContext('2d');
+    ctx.clearRect(0,0,gridCanvas.width,gridCanvas.height);
+    if (!pixelGridEl.checked) return;
+    const cellW = gridCanvas.width/OUT_W;
+    const cellH = gridCanvas.height/OUT_H;
+    ctx.strokeStyle = 'rgba(196,181,253,0.65)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x=0;x<=OUT_W;x++){
+      const px = Math.round(x*cellW)+0.5;
+      ctx.moveTo(px,0); ctx.lineTo(px, gridCanvas.height);
+    }
+    for (let y=0;y<=OUT_H;y++){
+      const py = Math.round(y*cellH)+0.5;
+      ctx.moveTo(0,py); ctx.lineTo(gridCanvas.width, py);
+    }
+    ctx.stroke();
+  }
+  pixelGridEl.addEventListener('change', drawGridLines);
+  window.addEventListener('resize', resizeGridCanvas);
+  if (window.ResizeObserver){
+    new ResizeObserver(resizeGridCanvas).observe(scope);
+  }
+
+  fitMode.addEventListener('change', () => { fitVal.textContent = fitMode.value; reprocess(); });
+  threshold.addEventListener('input', () => { thresholdVal.textContent = threshold.value; reprocess(); });
+  ditherEl.addEventListener('change', reprocess);
+  invertEl.addEventListener('change', reprocess);
+  quantizeEl.addEventListener('change', () => {
+    quantLevelsField.style.display = quantizeEl.checked ? 'block' : 'none';
+    reprocess();
+  });
+  quantLevels.addEventListener('input', () => { quantLevelsVal.textContent = quantLevels.value; reprocess(); });
+  optimizeEl.addEventListener('change', () => {
+    optimizeFpsField.style.display = optimizeEl.checked ? 'block' : 'none';
+    reprocess();
+  });
+  optimizeFps.addEventListener('change', () => { optimizeFpsVal.textContent = optimizeFps.value; reprocess(); });
+  varNameInput.addEventListener('input', updateSnippet);
+
+  function sanitizeName(raw){
+    let n = (raw || 'myAnimation').trim().replace(/[^a-zA-Z0-9_]/g, '_');
+    if (!/^[a-zA-Z_]/.test(n)) n = '_' + n;
+    return n || 'myAnimation';
+  }
+
+  function downloadBlob(blob, filename){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+
+  btnBin.addEventListener('click', () => {
+    if (!state.processedFrames) return;
+    const frames = state.processedFrames;
+    const n = frames.length;
+    const headerBytes = 4 + 2 + 2 + 2 + n*2;
+    const total = headerBytes + n*BYTES_PER_FRAME;
+    const buf = new ArrayBuffer(total);
+    const view = new DataView(buf);
+    let off = 0;
+    [0x4D,0x4F,0x4C,0x44].forEach(b => { view.setUint8(off, b); off += 1; }); // "MOLD"
+    view.setUint16(off, OUT_W, true); off += 2;
+    view.setUint16(off, OUT_H, true); off += 2;
+    view.setUint16(off, n, true); off += 2;
+    frames.forEach(f => { view.setUint16(off, Math.min(f.delay, 65535), true); off += 2; });
+    const u8 = new Uint8Array(buf);
+    frames.forEach(f => { u8.set(f.bits, off); off += BYTES_PER_FRAME; });
+
+    const name = sanitizeName(varNameInput.value);
+    downloadBlob(new Blob([buf], {type:'application/octet-stream'}), name + '.bin');
+  });
+
+  function bytesToHex(bytes){
+    let s = '';
+    for (let i=0;i<bytes.length;i++){
+      s += '0x' + bytes[i].toString(16).padStart(2,'0');
+      if (i < bytes.length-1) s += ',';
+      if ((i+1) % 16 === 0) s += '\n  '; else s += ' ';
+    }
+    return s.trim();
+  }
+
+  btnHeader.addEventListener('click', () => {
+    if (!state.processedFrames) return;
+    const name = sanitizeName(varNameInput.value);
+    const upper = name.toUpperCase();
+    const frames = state.processedFrames;
+
+    let out = '// Auto-generated by GIF/PNG -> OLED Bitmap Tool\n';
+    out += '// ' + OUT_W + 'x' + OUT_H + ', 1 bit per pixel, XBM order (LSB-first, bit0 = leftmost pixel)\n';
+    out += '// Usage with U8g2: u8g2.drawXBMP(0, 0, ' + OUT_W + ', ' + OUT_H + ', (const uint8_t*)pgm_read_ptr(&' + name + '_frames[i]));\n';
+    out += '#pragma once\n#include <Arduino.h>\n\n';
+    out += '#define ' + upper + '_WIDTH ' + OUT_W + '\n';
+    out += '#define ' + upper + '_HEIGHT ' + OUT_H + '\n';
+    out += '#define ' + upper + '_FRAME_COUNT ' + frames.length + '\n\n';
+
+    frames.forEach((f,i) => {
+      out += 'const uint8_t ' + name + '_frame_' + i + '[] PROGMEM = {\n  ' + bytesToHex(f.bits) + '\n};\n\n';
+    });
+
+    out += 'const uint8_t* const ' + name + '_frames[] PROGMEM = {\n  ' +
+      frames.map((_,i) => name + '_frame_' + i).join(', ') + '\n};\n\n';
+    out += 'const uint16_t ' + name + '_delays[] PROGMEM = {\n  ' +
+      frames.map(f => f.delay).join(', ') + '\n};\n';
+
+    downloadBlob(new Blob([out], {type:'text/plain'}), name + '.h');
+  });
+
+  function updateSnippet(){
+    if (!state.processedFrames){ snippetEl.textContent = ''; return; }
+    const name = sanitizeName(varNameInput.value);
+    snippetEl.innerHTML =
+'<span class="cm">// .bin format (little-endian):</span>\n' +
+'<span class="cm">//   [0..3]   magic "MOLD"</span>\n' +
+'<span class="cm">//   [4..5]   uint16 width       (128)</span>\n' +
+'<span class="cm">//   [6..7]   uint16 height      (64)</span>\n' +
+'<span class="cm">//   [8..9]   uint16 frame_count</span>\n' +
+'<span class="cm">//   [10..]   uint16 delay_ms x frame_count</span>\n' +
+'<span class="cm">//   [..]     frames: frame_count x 1024 bytes (XBM 1bpp)</span>\n\n' +
+'<span class="kw">// Read from LittleFS + render with U8g2</span>\n' +
+'File f = LittleFS.open("/' + name + '.bin", "r");\n' +
+'uint8_t header[10];\n' +
+'f.read(header, 10);\n' +
+'uint16_t w = header[4] | (header[5] << 8);\n' +
+'uint16_t h = header[6] | (header[7] << 8);\n' +
+'uint16_t frameCount = header[8] | (header[9] << 8);\n\n' +
+'uint16_t delays[frameCount];\n' +
+'f.read((uint8_t*)delays, frameCount * 2);\n\n' +
+'uint8_t frameBuf[' + BYTES_PER_FRAME + ']; <span class="cm">// (w/8) * h bytes</span>\n' +
+'for (int i = 0; i < frameCount; i++) {\n' +
+'  f.read(frameBuf, ' + BYTES_PER_FRAME + ');\n' +
+'  u8g2.clearBuffer();\n' +
+'  u8g2.drawXBMP(0, 0, w, h, frameBuf);\n' +
+'  u8g2.sendBuffer();\n' +
+'  delay(delays[i]);\n' +
+'}\n' +
+'f.close();';
+  }
+})();
+</script>
+</body>
+</html>
