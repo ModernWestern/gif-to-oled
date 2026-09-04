@@ -132,7 +132,7 @@ void loop() {
 
 ## **Technical notes**
 
-- The tool uses a **Floyd–Steinberg dithering** algorithm when enabled, which gives superior grayscale reproduction.
+- The tool supports Floyd–Steinberg dithering to smooth gradients. But keep in mind that the physical screen is just 128×64 pixels, so don't expect wonders. Fine details will always be blocky regardless of dithering.
 - **Color quantisation** can be used to pre‑band the image before thresholding – this can help emphasise edges or reduce noise.
 - For **GIFs**, the tool respects the original frame delays and disposal methods, preserving animation timing.
 - For **PNGs**, the file is treated as a single static frame.
