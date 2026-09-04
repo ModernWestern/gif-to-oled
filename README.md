@@ -1,5 +1,7 @@
 # GIF/PNG → OLED Bitmap Converter
 
+## [Click here to access the tool online](https://modernwestern.github.io/gif-to-oled/)
+
 A browser‑based tool that converts animated GIFs or static PNGs into **1‑bit per pixel** bitmaps for **128×64** OLED displays (e.g., SSD1306 / SSD1309).
 
 It produces a compact binary file (.bin) that can be read from LittleFS, or a C header (.h) with PROGMEM arrays ready to compile directly into your Arduino firmware.
